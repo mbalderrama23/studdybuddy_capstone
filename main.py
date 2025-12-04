@@ -30,11 +30,12 @@ app = FastAPI(title="StudyBuddy API", version="1.0.0", lifespan=lifespan)
 # CORS (for frontend access)
 # ----------------------------------------------------
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    CORSMiddleware(
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 )
 
 
@@ -63,8 +64,8 @@ async def upload_file(
         custom_title=title,
     )
 
-    # ⭐ SAVE MATERIAL
-    material_storage.save(material)
+    # ⭐ SAVE MATERIAL — FIXED
+    material_storage.store(material)
 
     return {
         "ok": True,
@@ -85,8 +86,8 @@ async def upload_text(
 ):
     material_id, material = process_and_store_text(text=text, title=title)
 
-    # ⭐ SAVE MATERIAL
-    material_storage.save(material)
+    # ⭐ SAVE MATERIAL — FIXED
+    material_storage.store(material)
 
     return {
         "ok": True,
@@ -109,8 +110,8 @@ async def list_materials():
             "doc_id": m.id,
             "title": m.title,
             "type": m.type.value,
-            "word_count": len(m.content.split()),
-            "content_preview": m.content[:200],
+            "word_count": m.word_count,
+            "content_preview": m.content_preview,
             "created_at": str(m.created_at),
         }
         for m in summaries
@@ -124,7 +125,7 @@ async def list_materials():
 
 
 # ----------------------------------------------------
-# GET SINGLE MATERIAL
+# GET ONE MATERIAL
 # ----------------------------------------------------
 @app.get("/materials/{material_id}")
 async def get_material(material_id: str):
@@ -157,7 +158,10 @@ async def clear_materials():
 async def chat(request: ChatRequest):
     try:
         agent = get_agent()
-        result = agent.run(message=request.message, material_ids=request.material_ids)
+        result = agent.run(
+            message=request.message,
+            material_ids=request.material_ids
+        )
 
         return ChatResponse(
             type=ResponseType(result["type"]),
@@ -173,7 +177,7 @@ async def chat(request: ChatRequest):
 
 
 # ----------------------------------------------------
-# ALIAS ROUTES (Lovable-compatible)
+# ALIASES FOR LOVABLE
 # ----------------------------------------------------
 @app.post("/materials/upload")
 async def alias_upload_file(file: UploadFile = File(...), title: str = Form(None)):
@@ -191,7 +195,7 @@ async def alias_list_materials():
 
 
 # ----------------------------------------------------
-# DEV ONLY
+# LOCAL DEV
 # ----------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
