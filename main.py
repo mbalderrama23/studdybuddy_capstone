@@ -26,9 +26,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="StudyBuddy API", version="1.0.0", lifespan=lifespan)
 
 
-# -------------------------
+# ----------------------------------------------------
 # CORS
-# -------------------------
+# ----------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,9 +43,9 @@ async def root():
     return {"message": "StudyBuddy API", "status": "running"}
 
 
-# -------------------------
+# ----------------------------------------------------
 # UPLOAD FILE
-# -------------------------
+# ----------------------------------------------------
 @app.post("/upload/file")
 async def upload_file(
     file: UploadFile = File(...),
@@ -60,21 +60,21 @@ async def upload_file(
         custom_title=title
     )
 
-    # ⭐ SAVE MATERIAL — THIS WAS MISSING
+    # ⭐ Save material
     material_storage.store(material)
 
     return {
         "ok": True,
-        "doc_id": material_id,
+        "id": material_id,                 # ← FIXED for frontend
         "title": material.title,
         "chunks": len(material.content.split()),
         "message": f"Uploaded '{material.title}'"
     }
 
 
-# -------------------------
+# ----------------------------------------------------
 # UPLOAD TEXT
-# -------------------------
+# ----------------------------------------------------
 @app.post("/upload/text")
 async def upload_text(
     text: str = Form(...),
@@ -82,28 +82,28 @@ async def upload_text(
 ):
     material_id, material = process_and_store_text(text=text, title=title)
 
-    # ⭐ SAVE MATERIAL
+    # ⭐ Save material
     material_storage.store(material)
 
     return {
         "ok": True,
-        "doc_id": material_id,
+        "id": material_id,                 # ← FIXED for frontend
         "title": material.title,
         "chunks": len(material.content.split()),
         "message": f"Uploaded '{material.title}'"
     }
 
 
-# -------------------------
+# ----------------------------------------------------
 # LIST MATERIALS
-# -------------------------
+# ----------------------------------------------------
 @app.get("/materials")
 async def list_materials():
     summaries = material_storage.get_summaries()
 
     frontend_list = [
         {
-            "doc_id": m.id,
+            "id": m.id,                    # ← FIXED for frontend
             "title": m.title,
             "type": m.type.value,
             "word_count": m.word_count,
@@ -114,10 +114,13 @@ async def list_materials():
     return {
         "ok": True,
         "materials": frontend_list,
-        "total_count": len(frontend_list)
+        "total_count": len(frontend_list),
     }
 
 
+# ----------------------------------------------------
+# GET ONE MATERIAL
+# ----------------------------------------------------
 @app.get("/materials/{material_id}")
 async def get_material(material_id: str):
     material = material_storage.get(material_id)
@@ -125,13 +128,16 @@ async def get_material(material_id: str):
         raise HTTPException(status_code=404, detail="Not found")
 
     return {
-        "doc_id": material.id,
+        "id": material.id,
         "title": material.title,
         "type": material.type.value,
-        "content": material.content
+        "content": material.content,
     }
 
 
+# ----------------------------------------------------
+# CLEAR MATERIALS
+# ----------------------------------------------------
 @app.delete("/materials")
 async def clear_materials():
     material_storage.clear()
@@ -139,6 +145,9 @@ async def clear_materials():
     return {"ok": True, "message": "Cleared"}
 
 
+# ----------------------------------------------------
+# CHAT
+# ----------------------------------------------------
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
@@ -162,22 +171,27 @@ async def chat(request: ChatRequest):
         )
 
 
-# -------------------------
-# Lovable aliases
-# -------------------------
+# ----------------------------------------------------
+# LOVABLE COMPATIBILITY ROUTES
+# ----------------------------------------------------
 @app.post("/materials/upload")
 async def alias_upload_file(file: UploadFile = File(...), title: str = Form(None)):
     return await upload_file(file=file, title=title)
 
+
 @app.post("/materials/upload-text")
 async def alias_upload_text(text: str = Form(...), title: str = Form("Untitled")):
     return await upload_text(text=text, title=title)
+
 
 @app.get("/materials/list")
 async def alias_list_materials():
     return await list_materials()
 
 
+# ----------------------------------------------------
+# LOCAL DEV
+# ----------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
