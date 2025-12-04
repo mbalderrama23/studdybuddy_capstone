@@ -9,21 +9,23 @@ from models.schemas import (
     ChatResponse,
     ResponseType,
 )
-from storage.memory import material_storage
 from services.material_service import process_and_store_file, process_and_store_text
 from agent.studybuddy_agent import get_agent, reset_agent
+
+# ⭐ NEW: SQLite repository instead of in-memory storage
+from storage.db import material_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("=" * 40)
-    print("StudyBuddy is ready!")
+    print("StudyBuddy is ready (SQLite Enabled)!")
     print("=" * 40)
     yield
     print("Shutting down...")
 
 
-app = FastAPI(title="StudyBuddy API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="StudyBuddy API", version="2.0.0", lifespan=lifespan)
 
 
 # ----------------------------------------------------
@@ -60,12 +62,12 @@ async def upload_file(
         custom_title=title
     )
 
-    # ⭐ Save material
-    material_storage.store(material)
+    # ⭐ Save to DATABASE (not memory)
+    material_db.save(material)
 
     return {
         "ok": True,
-        "id": material_id,                 # ← FIXED for frontend
+        "id": material_id,
         "title": material.title,
         "chunks": len(material.content.split()),
         "message": f"Uploaded '{material.title}'"
@@ -82,12 +84,12 @@ async def upload_text(
 ):
     material_id, material = process_and_store_text(text=text, title=title)
 
-    # ⭐ Save material
-    material_storage.store(material)
+    # ⭐ Save to DATABASE
+    material_db.save(material)
 
     return {
         "ok": True,
-        "id": material_id,                 # ← FIXED for frontend
+        "id": material_id,
         "title": material.title,
         "chunks": len(material.content.split()),
         "message": f"Uploaded '{material.title}'"
@@ -95,24 +97,22 @@ async def upload_text(
 
 
 # ----------------------------------------------------
-# LIST MATERIALS
+# LIST MATERIALS (SQLite)
 # ----------------------------------------------------
 @app.get("/materials")
 async def list_materials():
-    summaries = material_storage.get_summaries()
+    rows = material_db.list()
 
-    frontend_list = []
-    for m in summaries:
-        # handle enum or string
-        t = m.type.value if hasattr(m.type, "value") else m.type
-
-        frontend_list.append({
-            "id": m.id,
-            "title": m.title,
-            "type": t,  
-            "word_count": m.word_count,
-            "content_preview": getattr(m, "content_preview", m.content[:200])
-        })
+    frontend_list = [
+        {
+            "id": r.id,
+            "title": r.title,
+            "type": r.type,
+            "word_count": len(r.content.split()),
+            "content_preview": r.content[:200]
+        }
+        for r in rows
+    ]
 
     return {
         "ok": True,
@@ -121,30 +121,29 @@ async def list_materials():
     }
 
 
-
 # ----------------------------------------------------
 # GET ONE MATERIAL
 # ----------------------------------------------------
 @app.get("/materials/{material_id}")
 async def get_material(material_id: str):
-    material = material_storage.get(material_id)
+    material = material_db.get(material_id)
     if not material:
         raise HTTPException(status_code=404, detail="Not found")
 
     return {
         "id": material.id,
         "title": material.title,
-        "type": material.type.value,
+        "type": material.type,
         "content": material.content,
     }
 
 
 # ----------------------------------------------------
-# CLEAR MATERIALS
+# CLEAR MATERIALS (DATABASE)
 # ----------------------------------------------------
 @app.delete("/materials")
 async def clear_materials():
-    material_storage.clear()
+    material_db.clear()
     reset_agent()
     return {"ok": True, "message": "Cleared"}
 
@@ -199,4 +198,3 @@ async def alias_list_materials():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
