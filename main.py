@@ -101,21 +101,25 @@ async def upload_text(
 async def list_materials():
     summaries = material_storage.get_summaries()
 
-    frontend_list = [
-        {
-            "id": m.id,                    # ← FIXED for frontend
+    frontend_list = []
+    for m in summaries:
+        # handle enum or string
+        t = m.type.value if hasattr(m.type, "value") else m.type
+
+        frontend_list.append({
+            "id": m.id,
             "title": m.title,
-            "type": m.type.value,
+            "type": t,  
             "word_count": m.word_count,
-        }
-        for m in summaries
-    ]
+            "content_preview": getattr(m, "content_preview", m.content[:200])
+        })
 
     return {
         "ok": True,
         "materials": frontend_list,
-        "total_count": len(frontend_list),
+        "total_count": len(frontend_list)
     }
+
 
 
 # ----------------------------------------------------
