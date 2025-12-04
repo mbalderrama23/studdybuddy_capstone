@@ -113,6 +113,22 @@ async def chat(request: ChatRequest):
             payload=""
         )
 
+# ---------- ALIASES FOR LOVABLE FRONTEND COMPATIBILITY ----------
+
+# Lovable: POST /materials/upload  →  Real: /upload/file
+@app.post("/materials/upload")
+async def alias_upload_file(file: UploadFile = File(...), title: str = Form(None)):
+    return await upload_file(file=file, title=title)
+
+# Lovable: POST /materials/upload-text  →  Real: /upload/text
+@app.post("/materials/upload-text")
+async def alias_upload_text(text: str = Form(...), title: str = Form("Untitled")):
+    return await upload_text(text=text, title=title)
+
+# Lovable: GET /materials/list  →  Real: /materials
+@app.get("/materials/list")
+async def alias_list_materials():
+    return await list_materials()
 
 if __name__ == "__main__":
     import uvicorn
