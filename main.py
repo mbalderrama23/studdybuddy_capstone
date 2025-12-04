@@ -31,7 +31,7 @@ app = FastAPI(title="StudyBuddy API", version="1.0.0", lifespan=lifespan)
 # ----------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # For production, replace with your frontend domain
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,8 +63,8 @@ async def upload_file(
         custom_title=title,
     )
 
-    # ⭐ CRITICAL FIX — Save to memory storage
-    material_storage.add(material)
+    # ⭐ SAVE MATERIAL
+    material_storage.save(material)
 
     return {
         "ok": True,
@@ -85,8 +85,8 @@ async def upload_text(
 ):
     material_id, material = process_and_store_text(text=text, title=title)
 
-    # ⭐ CRITICAL FIX — Save to memory storage
-    material_storage.add(material)
+    # ⭐ SAVE MATERIAL
+    material_storage.save(material)
 
     return {
         "ok": True,
@@ -109,8 +109,8 @@ async def list_materials():
             "doc_id": m.id,
             "title": m.title,
             "type": m.type.value,
-            "word_count": m.word_count,
-            "content_preview": m.content_preview,
+            "word_count": len(m.content.split()),
+            "content_preview": m.content[:200],
             "created_at": str(m.created_at),
         }
         for m in summaries
@@ -197,4 +197,3 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
