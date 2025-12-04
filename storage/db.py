@@ -1,12 +1,9 @@
 import sqlite3
-import os
 from dataclasses import dataclass
 from typing import List, Optional
 
 DB_PATH = "materials.db"
 
-
-# Make sure DB file exists
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""
@@ -20,9 +17,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 init_db()
-
 
 @dataclass
 class MaterialRow:
@@ -30,7 +25,6 @@ class MaterialRow:
     title: str
     type: str
     content: str
-
 
 class MaterialDB:
     def __init__(self):
@@ -40,7 +34,9 @@ class MaterialDB:
         conn = sqlite3.connect(self.path)
         conn.execute(
             "REPLACE INTO materials (id, title, type, content) VALUES (?, ?, ?, ?)",
-            (material.id, material.title, material.type.value if hasattr(material.type, "value") else material.type, material.content)
+            (material.id, material.title, 
+             material.type.value if hasattr(material.type, "value") else material.type, 
+             material.content)
         )
         conn.commit()
         conn.close()
@@ -64,9 +60,18 @@ class MaterialDB:
         cur = conn.execute(
             "SELECT id, title, type, content FROM materials ORDER BY ROWID DESC"
         )
-        rows = [MaterialRow(id=r[0], title=r[1], type=r[2], content=r[3]) for r in cur.fetchall()]
+        rows = [MaterialRow(id=r[0], title=r[1], type=r[2], content=r[3]) 
+                for r in cur.fetchall()]
         conn.close()
         return rows
+
+    # ⭐ NEW DELETE METHOD
+    def delete(self, material_id: str) -> bool:
+        conn = sqlite3.connect(self.path)
+        cur = conn.execute("DELETE FROM materials WHERE id = ?", (material_id,))
+        conn.commit()
+        conn.close()
+        return cur.rowcount > 0
 
     def clear(self):
         conn = sqlite3.connect(self.path)
