@@ -2,36 +2,39 @@ from typing import Optional, Tuple
 from datetime import datetime
 import io
 import os
+import uuid
 
 from models.schemas import Material, MaterialType
-from storage.memory import material_storage
+from storage.db import material_db   # ⭐ USE SQLITE NOW
 
 
+# -------------------------------
+# DETECT FILE TYPE
+# -------------------------------
 def detect_material_type(filename: str, content_type: Optional[str] = None) -> MaterialType:
-    filename_lower = filename.lower()
-    if filename_lower.endswith('.pdf'):
+    name = filename.lower()
+    if name.endswith('.pdf'):
         return MaterialType.PDF
-    elif filename_lower.endswith('.docx'):
+    if name.endswith('.docx'):
         return MaterialType.DOCX
-    elif filename_lower.endswith('.pptx'):
+    if name.endswith('.pptx'):
         return MaterialType.PPTX
-    elif filename_lower.endswith('.txt'):
+    if name.endswith('.txt'):
         return MaterialType.TXT
-    elif filename_lower.endswith('.md'):
+    if name.endswith('.md'):
         return MaterialType.MARKDOWN
     return MaterialType.UNKNOWN
 
 
+# -------------------------------
+# PDF / DOCX / PPTX EXTRACTORS
+# -------------------------------
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     try:
         from PyPDF2 import PdfReader
         reader = PdfReader(io.BytesIO(file_bytes))
-        text_parts = []
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                text_parts.append(text)
-        return "\n\n".join(text_parts)
+        pages = [p.extract_text() or "" for p in reader.pages]
+        return "\n\n".join(pages)
     except Exception as e:
         return f"[Error extracting PDF: {str(e)}]"
 
@@ -40,8 +43,8 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
     try:
         from docx import Document
         doc = Document(io.BytesIO(file_bytes))
-        paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-        return "\n\n".join(paragraphs)
+        parts = [p.text for p in doc.paragraphs if p.text.strip()]
+        return "\n\n".join(parts)
     except Exception as e:
         return f"[Error extracting DOCX: {str(e)}]"
 
@@ -50,44 +53,52 @@ def extract_text_from_pptx(file_bytes: bytes) -> str:
     try:
         from pptx import Presentation
         prs = Presentation(io.BytesIO(file_bytes))
-        text_parts = []
-        for slide_num, slide in enumerate(prs.slides, 1):
-            slide_text = [f"--- Slide {slide_num} ---"]
+        slides = []
+        for i, slide in enumerate(prs.slides, 1):
+            items = [f"--- Slide {i} ---"]
             for shape in slide.shapes:
                 if hasattr(shape, "text") and shape.text.strip():
-                    slide_text.append(shape.text)
-            text_parts.append("\n".join(slide_text))
-        return "\n\n".join(text_parts)
+                    items.append(shape.text)
+            slides.append("\n".join(items))
+        return "\n\n".join(slides)
     except Exception as e:
         return f"[Error extracting PPTX: {str(e)}]"
 
 
+# -------------------------------
+# EXTRACT TEXT BASED ON TYPE
+# -------------------------------
 def extract_text(file_bytes: bytes, material_type: MaterialType) -> str:
     if material_type == MaterialType.PDF:
         return extract_text_from_pdf(file_bytes)
-    elif material_type == MaterialType.DOCX:
+    if material_type == MaterialType.DOCX:
         return extract_text_from_docx(file_bytes)
-    elif material_type == MaterialType.PPTX:
+    if material_type == MaterialType.PPTX:
         return extract_text_from_pptx(file_bytes)
-    elif material_type in (MaterialType.TXT, MaterialType.MARKDOWN):
+    if material_type in (MaterialType.TXT, MaterialType.MARKDOWN):
         try:
-            return file_bytes.decode('utf-8')
+            return file_bytes.decode("utf-8")
         except:
             return "[Error decoding text file]"
     return "[Unknown file format]"
 
 
+# -----------------------------------------------------
+# PROCESS AND STORE FILE → SAVE TO SQLITE
+# -----------------------------------------------------
 def process_and_store_file(
     filename: str,
     file_bytes: bytes,
     content_type: Optional[str] = None,
-    custom_title: Optional[str] = None
+    custom_title: Optional[str] = None,
 ) -> Tuple[str, Material]:
-    material_type = detect_material_type(filename, content_type)
+
+    material_type = detect_material_type(filename)
     content = extract_text(file_bytes, material_type)
-    material_id = material_storage.generate_id()
+
+    material_id = str(uuid.uuid4())[:8]
     title = custom_title or os.path.splitext(filename)[0]
-    
+
     material = Material(
         id=material_id,
         title=title,
@@ -96,14 +107,19 @@ def process_and_store_file(
         created_at=datetime.now().isoformat(),
         metadata_info=f"filename:{filename},size:{len(file_bytes)}"
     )
-    
-    material_storage.store(material)
+
+    material_db.save(material)   # ⭐ SAVE TO SQLITE
+
     return material_id, material
 
 
+# -----------------------------------------------------
+# PROCESS AND STORE RAW TEXT → SAVE TO SQLITE
+# -----------------------------------------------------
 def process_and_store_text(text: str, title: str = "Untitled Notes") -> Tuple[str, Material]:
-    material_id = material_storage.generate_id()
-    
+
+    material_id = str(uuid.uuid4())[:8]
+
     material = Material(
         id=material_id,
         title=title,
@@ -112,22 +128,31 @@ def process_and_store_text(text: str, title: str = "Untitled Notes") -> Tuple[st
         created_at=datetime.now().isoformat(),
         metadata_info="source:direct_text"
     )
-    
-    material_storage.store(material)
+
+    material_db.save(material)   # ⭐ SAVE TO SQLITE
+
     return material_id, material
 
 
+# -----------------------------------------------------
+# READ CONTENT FROM SQLITE
+# -----------------------------------------------------
 def get_material_content(material_id: str) -> Optional[str]:
-    material = material_storage.get(material_id)
-    if material:
-        return material.content
-    return None
+    row = material_db.get(material_id)
+    return row.content if row else None
 
 
 def get_all_materials_content(material_ids: Optional[list] = None) -> str:
     if material_ids:
-        return material_storage.get_content_by_ids(material_ids)
-    materials = material_storage.get_all()
-    if not materials:
-        return "[No materials uploaded yet]"
-    return material_storage.get_content_by_ids([m.id for m in materials])
+        texts = []
+        for mid in material_ids:
+            row = material_db.get(mid)
+            if row:
+                texts.append(row.content)
+        return "\n\n".join(texts)
+
+    # all materials
+    rows = material_db.list()
+    return "\n\n".join([r.content for r in rows]) if rows else "[No materials uploaded]"
+
+
