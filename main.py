@@ -191,6 +191,14 @@ async def alias_upload_text(text: str = Form(...), title: str = Form("Untitled")
 async def alias_list_materials():
     return await list_materials()
 
+@app.delete("/materials/{material_id}")
+async def delete_material(material_id: str):
+    deleted = material_db.delete(material_id)
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Material not found")
+
+    return {"ok": True, "message": f"Deleted {material_id}"}
 
 # ----------------------------------------------------
 # LOCAL DEV
